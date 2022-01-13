@@ -10,102 +10,209 @@ subtitle: Final Project
 font-family: Gill Sans
 ---
 
-Dataset: https://data.world/divyanshj/users-books-dataset
+**Dataset:** http://www2.informatik.uni-freiburg.de/~cziegler/BX/
 
 The dataset contains three csv files which consists of ......
 
-**Ratings.csv**:
-- User.ID
-- ISBN
-- Book.Rating
+**Ratings.csv**: Contains the book rating information. Ratings (Book-Rating) are either explicit, expressed on a scale from 1-10 (higher values denoting higher appreciation), or implicit, expressed by 0.
 
-**Users.csv**:
-- User.ID
-- Location
-- Age
+- User.ID: User identification ID
+- ISBN: ISBN Id for the book
+- Book.Rating: Rating for each book given by user
 
-**Books.csv**:
-- ISBN
-- Book.Title
-- Book.Author
-- Year.Of.Publication
-- Publisher
-- Image.URL.S
-- Image.URL.M
-- Image.URL.L
+**Users.csv**: Contains the users. User IDs (User-ID) have been anonymized and map to integers. Demographic data is provided (Location, Age) if available. Otherwise, these fields contain NULL-values
 
-```{r}
+- User.ID: Unique identification ID for the user
+- Location: Location of the user
+- Age: Age of the user
+
+
+**Books.csv**: Books are identified by their respective ISBN. Invalid ISBNs have already been removed from the dataset. Moreover, some content-based information is given (Book-Title, Book-Author, Year-Of-Publication, Publisher), obtained from Amazon Web Services. In case of several authors, only the first is provided. URLs linking to cover images are also given, appearing in three different flavours (Image-URL-S, Image-URL-M, Image-URL-L), i.e., small, medium, large. These URLs point to the Amazon web site.
+
+- ISBN: ISBN ID for each book
+- Book.Title: Title of the book
+- Book.Author: Author name
+- Year.Of.Publication: Publication year
+- Publisher: Name of the publisher
+- Image.URL.S: Small sized image URL of the book
+- Image.URL.M: Medium sized image URL of the book
+- Image.URL.L: Large sized image URL of the book
+
+# Importing libraries
+
+```{r, warning=FALSE,message=FALSE,error=FALSE, results='hide'}
 library(funModeling) 
 library(tidyverse) 
 library(Hmisc)
-require(dplyr)
+library(dplyr)
+library(data.table)
+library(stringr)
 ```
 
 
-## Loading dataset
+# Loading dataset
 
-```{r}
-ratings <- read.csv("Book Dataset/ratings.csv", sep = ";")
+```{r, warning=FALSE}
+ratings <- fread("BookDataset/ratings.csv", sep = ";")
 head(ratings, n=5)
 ```
 
-```{r}
-users <- read.csv("Book Dataset/users.csv", sep = ";")
+```{r,warning=FALSE}
+users <- fread("BookDataset/users.csv", sep = ";")
 head(users, n=5)
 ```
 
-```{r}
-books <- read.csv("Book Dataset/books.csv", sep = ";")
+```{r, warning=FALSE}
+books <- fread("BookDataset/books.csv", sep = ";")
 head(books, n=5)
 ```
 
-## Explore Data
 
-# Ratings data
-
-```{r}
-summary(ratings)
-```
-
+# Exploratory data analysis
 
 
 ```{r}
-n_distinct(ratings$ISBN)
+n_distinct(ratings$`User-ID`)
+#n_distinct(dataset$`User-ID`)
 n_distinct(books$ISBN)
-n_distinct(ratings$Book.Rating)
+#n_distinct(dataset$ISBN)
 ```
 
 
 ```{r}
-#unique(ratings[c("User.ID")])
+dataset = merge(ratings, users, by.x = "User-ID", by.y = "User-ID")
+dataset
+```
+
+```{r}
+dataset$Country <- sub('.*,\\s*','', dataset$Location)
+head(dataset, n=5)
+```
+
+```{r}
+dataset <- merge(dataset, books, by.x = "ISBN", by.y = "ISBN")
+dataset
+```
+
+
+```{r}
+colnames(dataset)
+```
+
+
+```{r}
+colnames(dataset)[which(colnames(dataset) %in%  c("User-ID", "Book-Rating", "Book-Title", "Book-Author", "Year-Of-Publication", "Image-URL-S", "Image-URL-M", "Image-URL-L"))] <- c("User.ID", "Book.Rating", "Book.Title", "Book.Author", "Year.Of.Publication", "Image.URL.S", "Image.URL.M", "Image.URL.L")
+colnames(dataset)
+```
+
+
+```{r}
+sapply(dataset, class)
+```
+
+```{r, warning=FALSE}
+dataset <- transform(dataset, Age = as.numeric(Age))
+dataset
+```
+
+```{r}
+dataset$User.ID <- as.factor(dataset$User.ID)
+dataset$ISBN <- as.factor(dataset$ISBN)
+summary(dataset)
 ```
 
 
 
 ```{r}
-n_distinct(ratings$User.ID)
-n_distinct(users$User.ID)
-n_distinct(users$Location)
-n_distinct(users$Age)
-```
-
-Toplam 140279 userdan 44.778 row olduğu için oy vermeyenler vardır
-
-```{r}
-
-n_distinct(books$Book.Title)
-n_distinct(books$Book.Author)
-```
-
-
-## Users data
-
-```{r}
-summary(users)
+rating.count.users <- dataset %>% count(User.ID)
+rating.count.users
 ```
 
 ```{r}
-glimpse(users)
+summary(rating.count.users)
+```
+
+
+```{r}
+rating.count.books <- dataset %>% count(ISBN)
+rating.count.books
+```
+
+
+```{r}
+summary(rating.count.books)
+```
+
+```{r}
+nrow(rating.count.books)
+sum(rating.count.books$n > 3.817)
+```
+
+```{r}
+rating.count.books[order(-n)]
+```
+
+
+
+
+```{r}
+rating.count.books <- rating.count.books[rating.count.books$n > 3.817]
+```
+
+
+```{r}
+dataset$Rating.Above.Mean <- ifelse(dataset$ISBN %in% rating.count.books$ISBN, "Yes", "No")
+```
+
+```{r}
+nrow(dataset[dataset$Rating.Above.Mean == "Yes",])
+nrow(dataset[dataset$Rating.Above.Mean == "No",])
+```
+
+
+```{r}
+countries <- dataset %>% count(Country)
+countries[order(-n)]
+```
+
+
+
+
+```{r}
+sum(duplicated(dataset))
+```
+
+
+### Top rated 5 books ??????????????????
+
+
+```{r}
+#ratings.mean <- aggregate(Book.Rating ~ ISBN, data = dataset, mean, na.rm=TRUE)
+ratings.mean <- setorder(setDT(dataset)[, .(Book.Rating = mean(Book.Rating)), by = ISBN], -Book.Rating)
+ratings.mean
+```
+
+
+
+```{r}
+summary(dataset)
+```
+
+```{r}
+sum(is.na(dataset))
+sum(is.na(dataset$Age))
+```
+
+
+```{r}
+ggplot(dataset, aes(x=reorder(Rating.Above.Mean, Rating.Above.Mean, function(x)-length(x)))) +
+geom_bar(fill='red') +  labs(x='Rating Above Mean')
+```
+
+
+```{r}
+length(dataset$Book.Author)
+n_distinct(dataset$Book.Author)
 ```
 
 
