@@ -1,0 +1,113 @@
+---
+title: "CENG 4515 DATA SCIENCE AND ANALYTICS"
+author: "Ayşe Ceren Çiçek & Gizem Kurnaz"
+date: "01/13/2021"
+output: 
+  html_document: default
+  pdf_document: default
+  word_document: default
+subtitle: Final Project
+font-family: Gill Sans
+---
+
+Dataset: https://data.world/divyanshj/users-books-dataset
+
+The dataset contains three csv files which consists of ......
+
+**Ratings.csv**:
+- User.ID
+- ISBN
+- Book.Rating
+
+**Users.csv**:
+- User.ID
+- Location
+- Age
+
+**Books.csv**:
+- ISBN
+- Book.Title
+- Book.Author
+- Year.Of.Publication
+- Publisher
+- Image.URL.S
+- Image.URL.M
+- Image.URL.L
+
+```{r}
+library(funModeling) 
+library(tidyverse) 
+library(Hmisc)
+require(dplyr)
+```
+
+
+## Loading dataset
+
+```{r}
+ratings <- read.csv("Book Dataset/ratings.csv", sep = ";")
+head(ratings, n=5)
+```
+
+```{r}
+users <- read.csv("Book Dataset/users.csv", sep = ";")
+head(users, n=5)
+```
+
+```{r}
+books <- read.csv("Book Dataset/books.csv", sep = ";")
+head(books, n=5)
+```
+
+## Explore Data
+
+# Ratings data
+
+```{r}
+summary(ratings)
+```
+
+
+
+```{r}
+n_distinct(ratings$ISBN)
+n_distinct(books$ISBN)
+n_distinct(ratings$Book.Rating)
+```
+
+
+```{r}
+#unique(ratings[c("User.ID")])
+```
+
+
+
+```{r}
+n_distinct(ratings$User.ID)
+n_distinct(users$User.ID)
+n_distinct(users$Location)
+n_distinct(users$Age)
+```
+
+Toplam 140279 userdan 44.778 row olduğu için oy vermeyenler vardır
+
+```{r}
+
+n_distinct(books$Book.Title)
+n_distinct(books$Book.Author)
+```
+
+
+## Users data
+
+```{r}
+summary(users)
+```
+
+```{r}
+glimpse(users)
+```
+
+
+
+
