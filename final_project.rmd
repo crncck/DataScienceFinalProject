@@ -52,6 +52,10 @@ library(Hmisc)
 library(missForest)
 library(mice)
 library(ROSE)
+library(tidyverse)
+library(knitr)
+library(caret)
+library(Amelia)
 ```
 
 
@@ -404,15 +408,102 @@ summary(combine)
 
 
 ----------------------------------------------------------------------
+##Subset Data
 
 
+```{r}
+set.seed(12345)
+```
+
+```{r}
+dataset <- dataset[sample(1:nrow(dataset),500),]
+nrow(dataset)
+```
+##Logistic Regression
+
+```{r}
+sapply(dataset, class)
+```
+We have a factor variable which is diagnosis (our dependent variable) but R assumes it is a character. We modified it to factor.
+
+```{r}
+dataset$Rating.Count.Above.Mean <- as.factor(dataset$Rating.Count.Above.Mean)
+```
+
+We split our data into train and test data.
+
+```{r}
+sample<- createDataPartition(y= dataset$Rating.Count.Above.Mean,p=0.8,list = FALSE)
+
+train_data <- dataset[sample,]
+test_data <- dataset[-sample,]
+```
+
+We created our model.
+
+```{r}
+logistic_model <- glm(Rating.Count.Above.Mean~.,data = train_data,family = "binomial")
+```
+
+```{r}
+prob <- predict(logistic_model,newdata=test_data,type="response")
+pred <- ifelse(prob > 0.5,"Yes","No")
 
 
+confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
+```
+
+##PCA
+
+We applied PCA in our dataset.
+
+```{r}
+pca <- prcomp(train_data, center = TRUE, scale = TRUE)
+
+summary(pca)
+```
+
+Look at the result in a plot.
+```{r}
+screeplot(pca, type = "l", npcs = 15, main = "Screeplot of the first 15 PCs")
+abline(h = 1, col="red", lty=5)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+```
 
 
+```{r}
+cumpro <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
+plot(cumpro[0:15], xlab = "PC #", ylab = "Amount of explained variance", main = "Cumulative variance plot")
+abline(v = 6, col="red", lty=5)
+abline(h = 0.88759, col="red", lty=5)
+legend("topleft", legend=c("Cut-off @ PC6"),
+       col=c("red"), lty=5, cex=0.6)
+```
+
+```{r}
+set.seed(42)
+
+data_pca <- data.frame(Rating.Count.Above.Mean=train_data[,"Rating.Count.Above.Mean"],pca$x[,0:6])
+head(data_pca)
+```
+
+##Logistic Regression Again
+```{r}
+set.seed(42)
+model_pca <- glm(Rating.Count.Above.Mean ~ .,data= data_pca,family = binomial)
+
+test_data_pca <- predict(pca,newdata = test_data)
+
+```
 
 
+```{r}
+prob <- predict(model_pca , newdata = data.frame(test_data_pca[,1:6]),type = "response")
 
+pred <- factor(ifelse(prob>0.5,"Yes","No"))
 
+confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
+```
 
 
