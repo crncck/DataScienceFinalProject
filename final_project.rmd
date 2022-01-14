@@ -12,7 +12,7 @@ font-family: Gill Sans
 
 **Dataset:** http://www2.informatik.uni-freiburg.de/~cziegler/BX/
 
-The dataset contains three csv files which consists of ......
+The dataset contains three csv files which are ratings, users and books.
 
 **Ratings.csv**: Contains the book rating information. Ratings (Book-Rating) are either explicit, expressed on a scale from 1-10 (higher values denoting higher appreciation), or implicit, expressed by 0.
 
@@ -43,7 +43,6 @@ The dataset contains three csv files which consists of ......
 ```{r, warning=FALSE,message=FALSE,error=FALSE, results='hide'}
 library(funModeling) 
 library(tidyverse) 
-library(Hmisc)
 library(dplyr)
 library(data.table)
 library(stringr)
@@ -52,14 +51,19 @@ library(Hmisc)
 library(missForest)
 library(mice)
 library(ROSE)
-library(tidyverse)
-library(knitr)
+library(cluster)
+library(ClusterR)
+library(caTools)
 library(caret)
+library(knitr)
 library(Amelia)
+library(rpart)
 ```
 
 
 # Loading dataset
+
+We will load 3 data files first. 
 
 ```{r, warning=FALSE}
 ratings <- fread("BookDataset/ratings.csv", sep = ";")
@@ -71,7 +75,7 @@ users <- fread("BookDataset/users.csv", sep = ";")
 head(users, n=5)
 ```
 
-```{r, warning=FALSE}
+```{r, warning=FALSE, message=FALSE, error=FALSE}
 books <- fread("BookDataset/books.csv", sep = ";")
 head(books, n=5)
 ```
@@ -79,32 +83,42 @@ head(books, n=5)
 
 # Exploratory data analysis
 
-### Exploration of unique number of books & users
+Let's check the unique number of books & users. 
 
 ```{r}
 n_distinct(ratings$`User-ID`)
 n_distinct(books$ISBN)
 ```
 
+We have 91407 unique UserID but originally there are 278858 users. That means not all users have ratings. 
+
+
 ### Merging dataframes
+
+We will first merge ratings and users dataframes based on User-ID column.
 
 ```{r}
 dataset = merge(ratings, users, by.x = "User-ID", by.y = "User-ID")
 ```
 
-Retrieving country information
+Now we will retrieve country information from the Location column which contains state, city, country information.
 
 ```{r}
 dataset$Country <- sub('.*,\\s*','', dataset$Location)
+dataset <- dataset[(which(nchar(dataset$Country) >= 2)),]
 head(dataset, n=5)
 ```
+
+We will merge the last dataframe with our new one based on ISBN.
 
 ```{r}
 dataset <- merge(dataset, books, by.x = "ISBN", by.y = "ISBN")
 head(dataset, n=5)
 ```
 
-Changing column names
+### Changing column names
+
+We have 13 columns and we can change names of the some of them.
 
 ```{r}
 colnames(dataset)
@@ -115,20 +129,20 @@ colnames(dataset)[which(colnames(dataset) %in%  c("User-ID", "Book-Rating", "Boo
 colnames(dataset)
 ```
 
-Looking classes of data columns
+Now we can check the classes of those columns.
 
 ```{r}
 sapply(dataset, class)
 ```
 
-Transforming age to numeric
+Except for the Age column, it seems like others' have appropriate classes. We will turn Age column to numeric.
 
 ```{r, warning=FALSE}
 dataset <- transform(dataset, Age = as.numeric(Age))
 head(dataset, n=5)
 ```
 
-Check for duplications
+Check for any duplications
 
 ```{r}
 sum(duplicated(dataset))
@@ -140,8 +154,9 @@ Check for NA values
 sum(is.na(dataset))
 sum(is.na(dataset$Age))
 ```
+We have missing values and all of them are in the Age column.
 
-Turning ID columns to factor
+Also, we will turn ID columns into factors to make easier usage in the future.
 
 ```{r}
 dataset$User.ID <- as.factor(dataset$User.ID)
@@ -149,12 +164,14 @@ dataset$ISBN <- as.factor(dataset$ISBN)
 summary(dataset)
 ```
 
-Number of ratings by users
+## Number of ratings by users
 
 ```{r}
 rating.count.users <- dataset %>% count(User.ID)
-rating.count.users
+head(rating.count.users, n=5)
 ```
+
+From the table below, we can see that the maximum number of rating by a user is 2899 and the mean is about 5.
 
 ```{r}
 summary(rating.count.users)
@@ -176,6 +193,8 @@ There are a lot of zero values. It might indicate the absence of rating. So we w
 dataset = dataset[dataset$Book.Rating!= 0, ]
 ```
 
+So the rating change as seen below.
+
 ```{r}
 dataset %>%
   group_by(Book.Rating) %>%
@@ -184,27 +203,30 @@ dataset %>%
   theme_minimal() + scale_x_continuous(breaks = 0:10)
 ```
 
+Now we will get total rating count for each book.
 
 ```{r}
 rating.count.books <- dataset %>% count(ISBN)
-rating.count.books
+head(rating.count.books, n=5)
 ```
 
+A book has a maximum 259 number of votes. The mean value is 1.861.
 
 ```{r}
 summary(rating.count.books)
 ```
-Check how many of them above the mean
+
+Now we will get the books which has more votes than the mean and classify them as above the mean or not.
 
 ```{r}
 nrow(rating.count.books)
-sum(rating.count.books$n > 2.562)
+sum(rating.count.books$n > 1.861)
 ```
 
 Order in descending order 
 
 ```{r}
-rating.count.books[order(-n)]
+head(rating.count.books[order(-n)], n=5)
 ```
 
 Get the books which has higher rating more than the mean and classify by yes or no
@@ -218,6 +240,7 @@ rating.count.books <- rating.count.books[rating.count.books$n > 2.562]
 dataset$Rating.Count.Above.Mean <- ifelse(dataset$ISBN %in% rating.count.books$ISBN, "Yes", "No")
 ```
 
+31449 books has count more than mean and 37450 are below the mean.
 
 ```{r}
 nrow(dataset[dataset$Rating.Count.Above.Mean == "Yes",])
@@ -225,13 +248,15 @@ nrow(dataset[dataset$Rating.Count.Above.Mean == "No",])
 ```
 
 
-## Top 10 countries users from
+## Top 10 countries 
+
+Top 10 countries that are users from.
 
 ```{r}
 countries <- dataset %>% count(Country)
-countries <- countries[!(countries$Country=="" | countries$Country=="n/a")]
+countries <- countries[!(countries$Country=="n/a")]
 countries <- countries[order(-n)][1:10]
-countries
+head(countries, n=10)
 ```
 
 ```{r}
@@ -348,6 +373,402 @@ ggplot(oversampled, aes(x=reorder(Rating.Count.Above.Mean, Rating.Count.Above.Me
 geom_bar(fill='red') +  labs(x='Oversampled Rating Count Above Mean')
 ```
 
+## Subset data
+
+```{r}
+set.seed(12345)
+dataset <- dataset[sample(1:nrow(dataset),500),]
+nrow(dataset)
+```
+
+
+# Logistic Regression
+
+```{r}
+sapply(dataset, class)
+```
+
+We have a factor variable which is Rating.Count.Above.Mean (our dependent variable) but R assumes it is a character. We modified it to factor.
+
+```{r}
+dataset$Rating.Count.Above.Mean <- as.factor(dataset$Rating.Count.Above.Mean)
+```
+
+We split our data into train and test data.
+
+```{r}
+sample<- createDataPartition(y= dataset$Rating.Count.Above.Mean,p=0.8,list = FALSE)
+
+train_data <- dataset[sample,]
+test_data <- dataset[-sample,]
+```
+
+We created our model.
+
+```{r}
+logistic_model <- glm(Rating.Count.Above.Mean~.,data = train_data,family = "binomial")
+```
+
+
+```{r}
+prob <- predict(logistic_model,newdata=test_data,type="response")
+pred <- ifelse(prob > 0.5,"Yes","No")
+```
+
+
+```{r}
+confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
+```
+
+
+# PCA
+
+We applied PCA in our dataset.
+
+```{r}
+pca <- prcomp(train_data, center = TRUE, scale = TRUE)
+
+summary(pca)
+```
+
+Look at the result in a plot.
+
+```{r}
+screeplot(pca, type = "l", npcs = 15, main = "Screeplot of the first 15 PCs")
+abline(h = 1, col="red", lty=5)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+```
+
+
+```{r}
+cumpro <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
+plot(cumpro[0:15], xlab = "PC #", ylab = "Amount of explained variance", main = "Cumulative variance plot")
+abline(v = 6, col="red", lty=5)
+abline(h = 0.88759, col="red", lty=5)
+legend("topleft", legend=c("Cut-off @ PC6"),
+       col=c("red"), lty=5, cex=0.6)
+```
+
+
+
+```{r}
+set.seed(42)
+
+data_pca <- data.frame(Rating.Count.Above.Mean=train_data[,"Rating.Count.Above.Mean"],pca$x[,0:6])
+head(data_pca)
+```
+
+
+# Logistic Regression with PCA
+
+```{r}
+set.seed(42)
+model_pca <- glm(Rating.Count.Above.Mean ~ .,data= data_pca,family = binomial)
+test_data_pca <- predict(pca,newdata = test_data)
+```
+
+
+```{r}
+prob <- predict(model_pca , newdata = data.frame(test_data_pca[,1:6]),type = "response")
+pred <- factor(ifelse(prob>0.5,"Yes","No"))
+confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
+```
+
+
+
+# Clustering
+
+## K-Means Clustering
+
+K-means clustering aims to partition data into k clusters in a way that data points in the same cluster are similar and data points in the different clusters are farther apart. It’s an unsupervised machine learning algorithm. It computes the centroids and iterates until it finds optimal centroid. It assumes that the number of clusters are already known. 
+
+The k-means clustering works as follows:
+
+- Choose the k number of clusters
+
+- Select k random points, the centroids (they don’t have to be part of the dataset)
+
+- Assign each point to the closest centroid
+
+- Compute and replace the new centroid of each cluster
+
+- Reassign each data point to the new closest centroid. If any reassignment happens, go back to previous step. 
+
+
+We will use age and location to cluster users.
+
+```{r}
+X <- dataset[sample,] %>% select("User.ID", "Age", "Book.Rating")
+head(X, n=5)
+```
+
+## Determining Optimal Number of Clusters
+
+The number of clusters that we choose for a given dataset cannot be random. Each cluster is formed by calculating and comparing the distances of data points within a cluster to its centroid. An ideal way to figure out the right number of clusters would be to calculate the Within-Cluster-Sum-of-Squares (WCSS). 
+
+**WCSS** is the sum of squares of the distances of each data point in all clusters to their respective centroids.
+
+We can use some techniques to determine optimal number of clusters. **Elbow method** is one of them. The method consists of plotting the explained variation as a function of the number of clusters, and picking the elbow of the curve as the number of clusters to use.
+
+
+```{r}
+X <- X[!is.na(X$Age), ]
+```
+
+
+## Elbow method
+
+We are going to use the Elbow Method to decide the optimal number of clusters.
+
+```{r}
+set.seed(6)
+wcss <- vector() 
+for (i in 1:10) wcss[i] <-  sum(kmeans(X, i)$withinss)
+plot(1:10, wcss, type = "b", main = paste("Clusters of users"), xlab = "Number of clusters", ylab = "WCSS")
+```
+
+
+As seen on the plot, the optimal number of clusters seems as 3.
+
+## Apply K-Means
+
+We will split our data into 3 clusters. The nstart parameter attempts multiple initial configurations and reports on the best one. 
+
+```{r}
+set.seed(29)
+kmeans.model <- kmeans(X, 3, iter.max = 300, nstart = 10)
+kmeans.model
+```
+
+With clusplot function we can draw a 2 dimensional clustering plot with our clusters.
+
+```{r}
+clusplot(X, clus = kmeans.model$cluster, lines = 0, shade = TRUE, color = TRUE, labels = 2, plotchar = FALSE, span = TRUE, main = paste("Clusters of users"), xlab = "Age", ylab = "Book Rating")
+```
+
+## Hierarchical clustering
+
+Hierarchical clustering is **an algorithm that groups similar objects into groups called clusters**. It is an alternative approach to k-means clustering for identifying groups. The endpoint is a set of clusters, where each cluster is distinct from the other cluster, and the objects within each cluster are broadly similar to each other. 
+
+- It is an unsupervised machine learning algorithm. 
+- The hierarchical clustering does not require us to pre-specify the number of clusters to be generated as is required by the k-means approach. 
+- It has a tree-based representation called **dendrogram** which is a diagram that shows the hierarchical relationship between objects.
+
+
+Hierarchical clustering can be divided into two main types: **agglomerative** and **divisive**. 
+
+## A) Agglomerative Clustering
+
+It is a bottom-up approach. In the beginning, each object is initially considered as a single-element cluster. At each step of the algorithm, the two clusters that are the most similar are combined into a new bigger cluster. This procedure is iterated until all points are member of just one single big cluster. 
+
+This process has a **O(N^3) time complexity** and a **O(N^2) memory complexity** that makes it *not tractable for large datasets*.
+
+How it works:
+
+- Make each data point a single-point cluster
+- Take the two closest *data points* and make them one cluster
+- Take the two closest *clusters* and make them one cluster
+- Repeat the previous step until there is only one cluster
+
+
+## B) Divisive Clustering
+
+It is a top-down approach. It begins with the root, in which all objects are included in a single cluster. At each step of iteration, the most heterogeneous cluster is divided into two. The process is iterated until all objects are in their own cluster.
+
+This process requires at each iteration to search for the best split, implying a **O(2N) time complexity** that has to be tackled with some heuristics. *Divisive hierarchical clustering is good at identifying large clusters.*
+
+
+We will use the same data frame that we have been created in the previous model.
+
+```{r}
+head(X, n=5)
+```
+
+## Dendrogram
+
+A dendrogram is a tree-like chart that shows the sequences of merges or splits of clusters. We will use it to find the optimal number of clusters.
+
+```{r}
+dendrogram <- hclust(dist(X, method = 'euclidean'), method = 'ward.D')
+plot(dendrogram, main = 'Dendrogram', xlab = 'Users', ylab = 'Euclidean distances')
+```
+The larger gap cut generates 2 clusters so we can say optimal number of clusters is 2.
+
+
+## Apply hierarchical clustering
+
+```{r}
+hc <- hclust(dist(X, method = 'euclidean'), method = 'ward.D')
+```
+
+Cutree method cuts a dendrogram tree into several groups by specifying the desired number of clusters k(s), or cut height(s).
+
+```{r}
+y_hc <- cutree(hc, 2)
+y_hc
+```
+We can see the clusters above.
+
+
+## Visualize the clusters
+
+With clusplot function we can draw a 2 dimensional clustering plot with our clusters.
+
+```{r}
+clusplot(X, clus = y_hc, lines = 0, shade = TRUE, color = TRUE, labels = 2, plotchar = FALSE, span = TRUE, 
+         main = paste("Clusters of clients"), xlab = "Age", ylab = "Book Rating")
+```
+
+
+# Classification
+
+## Decision Tree
+
+Decision Tree is a supervised learning technique that can be used for both classification and regression problems, but mostly it is preferred for solving classification problems. 
+- It is a tree-structured classifier
+- Internal nodes represent the features of a dataset
+- Branches represent the decision rules
+- Each leaf node represents the outcome
+
+```{r}
+Z <- dataset[sample,] %>% select("Book.Rating", "Age", "Rating.Count.Above.Mean")
+head(Z, n=5)
+```
+
+
+```{r}
+Z <- Z %>% mutate(Rating.Count.Factor = ifelse(Rating.Count.Above.Mean == "No", 0, 1))
+```
+
+
+Turn the target feature to factor
+
+```{r}
+Z$Rating.Count.Factor = factor(Z$Rating.Count.Factor, levels = c(0, 1))
+```
+
+
+```{r}
+Z <- Z[!is.na(Z$Age), ]
+Z <- select(Z,-c(Rating.Count.Above.Mean))
+head(Z, n=5)
+```
+
+
+### Split data into Train and Test set
+
+Rating.Count.Factor column is our dependent variable.
+
+```{r}
+set.seed(123)
+splitted = sample.split(Z$Rating.Count.Factor, SplitRatio = 0.75)
+train_Set = subset(Z, splitted == TRUE)
+test_Set = subset(Z, splitted == FALSE)
+```
+
+## Feature Scaling
+
+Feature scaling is a method used to normalize the range of independent variables or features of data.
+
+We will scale all the features except our dependent variable, Rating.Count.Factor.
+
+
+```{r}
+trainSet = train_Set
+testSet = test_Set
+```
+
+
+## Apply Decision Tree
+
+```{r}
+model = rpart(formula = Rating.Count.Factor ~ ., data = train_Set)
+model
+```
+
+
+## Prediction
+
+Probability prediction show us predicted probabilities that the user will buy the product.
+
+```{r}
+probability.prediction = predict(model, newdata = test_Set[-3, 1:72], type = 'class')
+probability.prediction
+```
+
+
+## Confusion Matrix
+
+```{r}
+# Generate confusion matrix
+conf.matrix <- confusionMatrix(table(test_Set[3], probability.prediction))
+conf.matrix
+```
+
+The accurary is 83%. We have 11 + 6 incorrect classifications.
+
+
+```{r}
+# Heatmap visualization of confusion matrix
+table <- data.frame(conf.matrix$table)
+plotTable <- table %>%
+  group_by(probability.prediction) %>%
+  mutate(prop = Freq/sum(Freq))
+ggplot(data =  plotTable, mapping = aes(x = Var1, y = probability.prediction, alpha = prop)) +
+  geom_tile(aes(fill = Freq), colour = "white") +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1, color="white", size=10) +
+  scale_fill_gradient(low = "blue", high = "navyblue") +
+  theme_bw() + theme(legend.position = "none")
+```
+
+## Visualize Train Set Results
+
+```{r}
+set = trainSet
+X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set = expand.grid(X1, X2)
+colnames(grid_set) = c('Age', 'EstimatedSalary')
+y_grid = predict(model, newdata = grid_set, type = 'class')
+plot(set[, -3], main = 'Decision Tree (Train Set)',
+     xlab = 'Age', ylab = 'Estimated Salary',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
+```
+
+
+## Visualize Test Set Results
+
+```{r}
+set = testSet
+X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set = expand.grid(X1, X2)
+colnames(grid_set) = c('Age', 'EstimatedSalary')
+y_grid = predict(model, newdata = grid_set, type = 'class')
+plot(set[, -3], main = 'Decision Tree (Test Set)',
+     xlab = 'Age', ylab = 'Estimated Salary',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
+```
+
+## Plot Decision Tree
+
+We will apply the decision tree to data that was not applied feature scaling.
+
+```{r}
+model = rpart(formula = Purchased ~ ., data = train_Set)
+plot(model)
+text(model)
+```
+
+
+
 
 
 
@@ -408,102 +829,7 @@ summary(combine)
 
 
 ----------------------------------------------------------------------
-##Subset Data
 
 
-```{r}
-set.seed(12345)
-```
-
-```{r}
-dataset <- dataset[sample(1:nrow(dataset),500),]
-nrow(dataset)
-```
-##Logistic Regression
-
-```{r}
-sapply(dataset, class)
-```
-We have a factor variable which is diagnosis (our dependent variable) but R assumes it is a character. We modified it to factor.
-
-```{r}
-dataset$Rating.Count.Above.Mean <- as.factor(dataset$Rating.Count.Above.Mean)
-```
-
-We split our data into train and test data.
-
-```{r}
-sample<- createDataPartition(y= dataset$Rating.Count.Above.Mean,p=0.8,list = FALSE)
-
-train_data <- dataset[sample,]
-test_data <- dataset[-sample,]
-```
-
-We created our model.
-
-```{r}
-logistic_model <- glm(Rating.Count.Above.Mean~.,data = train_data,family = "binomial")
-```
-
-```{r}
-prob <- predict(logistic_model,newdata=test_data,type="response")
-pred <- ifelse(prob > 0.5,"Yes","No")
-
-
-confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
-```
-
-##PCA
-
-We applied PCA in our dataset.
-
-```{r}
-pca <- prcomp(train_data, center = TRUE, scale = TRUE)
-
-summary(pca)
-```
-
-Look at the result in a plot.
-```{r}
-screeplot(pca, type = "l", npcs = 15, main = "Screeplot of the first 15 PCs")
-abline(h = 1, col="red", lty=5)
-legend("topright", legend=c("Eigenvalue = 1"),
-       col=c("red"), lty=5, cex=0.6)
-```
-
-
-```{r}
-cumpro <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
-plot(cumpro[0:15], xlab = "PC #", ylab = "Amount of explained variance", main = "Cumulative variance plot")
-abline(v = 6, col="red", lty=5)
-abline(h = 0.88759, col="red", lty=5)
-legend("topleft", legend=c("Cut-off @ PC6"),
-       col=c("red"), lty=5, cex=0.6)
-```
-
-```{r}
-set.seed(42)
-
-data_pca <- data.frame(Rating.Count.Above.Mean=train_data[,"Rating.Count.Above.Mean"],pca$x[,0:6])
-head(data_pca)
-```
-
-##Logistic Regression Again
-```{r}
-set.seed(42)
-model_pca <- glm(Rating.Count.Above.Mean ~ .,data= data_pca,family = binomial)
-
-test_data_pca <- predict(pca,newdata = test_data)
-
-```
-
-
-```{r}
-prob <- predict(model_pca , newdata = data.frame(test_data_pca[,1:6]),type = "response")
-
-pred <- factor(ifelse(prob>0.5,"Yes","No"))
-
-confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
-```
 
 
