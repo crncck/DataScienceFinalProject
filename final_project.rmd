@@ -3,31 +3,69 @@ title: "CENG 4515 DATA SCIENCE AND ANALYTICS"
 author: "Ayşe Ceren Çiçek & Gizem Kurnaz"
 date: "01/13/2021"
 output: 
-  html_document: default
   pdf_document: default
+  html_document: default
   word_document: default
 subtitle: Final Project
 font-family: Gill Sans
 ---
 
+<script type="text/javascript">
+  // When the document is fully rendered...
+  $(document).ready(function() {
+    // ...select all header elements...
+    $('h1, h2, h3, h4, h5').each(function() {
+      // ...and add an id to them corresponding to their 'titles'
+      $(this).attr('id', $(this).html());
+    });
+  });
+</script>
+
+## TABLE OF CONTENTS
+
+- <a href="#1) Dataset">1) Dataset</a><br>
+- <a href="#2) Exploratory data analysis">2) Exploratory data analysis</a><br>
+- <a href="#3) Visualization techniques">3) Visualization techniques</a><br>
+- <a href="#Z.a) Imbalanced data set">Z.a) Imbalanced data set</a><br>
+- <a href="#Y.a) Missing data imputation">Y.a) Missing data imputation</a><br>
+- <a href="#4) Multicollinearity">4) Multicollinearity</a><br>
+- <a href="#6) Logistic Regression">6) Logistic Regression</a><br>
+- <a href="#5) PCA">5) PCA</a><br>
+  - <a href="#6.X) Building a logistic regression model on the transformed data">6.X) PCA with Logistic Regression</a><br>
+- <a href="#7) Clustering">7) Clustering</a><br>
+  - <a href="#7.1) K-Means Clustering Algorithm Application">7.1) K-Means Clustering Algorithm Application</a><br>
+  - <a href="#7.2) Hierarchical Clustering Algorithm Application">7.2) Hierarchical Clustering Algorithm Application</a><br>
+    - <a href="#Y.b) Missing Data with Hierarchical Clustering
+">Y.b) Missing Data with Hierarchical Clustering
+</a><br>
+- <a href="#8) Classification">8) Classification</a><br>
+  - <a href="#8.1) Decision Tree Algorithm Application">8.1) Decision Tree Algorithm Application</a><br>
+    - <a href="#Z.b) Decision tree with imbalanced data">Z.b) Decision tree with imbalanced data</a><br>
+  - <a href="#8.2) K-Nearest Neighbors (K-NN) Algorithm Application">8.2) K-Nearest Neighbors Algorithm Application</a><br>
+
+
+  
+
+
+# 1) Dataset
+
 **Dataset:** http://www2.informatik.uni-freiburg.de/~cziegler/BX/
 
 The dataset contains three csv files which are ratings, users and books.
 
-**Ratings.csv**: Contains the book rating information. Ratings (Book-Rating) are either explicit, expressed on a scale from 1-10 (higher values denoting higher appreciation), or implicit, expressed by 0.
+**Ratings.csv**: Contains the book rating information. Ratings (Book-Rating) are either explicit, expressed on a scale from 1-10 (higher values denoting higher appreciation), or implicit, expressed by 0. This file contains 999,999 rows and 3 columns:
 
 - User.ID: User identification ID
 - ISBN: ISBN Id for the book
 - Book.Rating: Rating for each book given by user
 
-**Users.csv**: Contains the users. User IDs (User-ID) have been anonymized and map to integers. Demographic data is provided (Location, Age) if available. Otherwise, these fields contain NULL-values
+**Users.csv**: Contains the users. User IDs (User-ID) have been anonymized and map to integers. Demographic data is provided (Location, Age) if available. Otherwise, these fields contain NULL-values. This file contains 278,858 rows and 3 columns: 
 
 - User.ID: Unique identification ID for the user
 - Location: Location of the user
 - Age: Age of the user
 
-
-**Books.csv**: Books are identified by their respective ISBN. Invalid ISBNs have already been removed from the dataset. Moreover, some content-based information is given (Book-Title, Book-Author, Year-Of-Publication, Publisher), obtained from Amazon Web Services. In case of several authors, only the first is provided. URLs linking to cover images are also given, appearing in three different flavours (Image-URL-S, Image-URL-M, Image-URL-L), i.e., small, medium, large. These URLs point to the Amazon web site.
+**Books.csv**: Books are identified by their respective ISBN. Invalid ISBNs have already been removed from the dataset. Moreover, some content-based information is given (Book-Title, Book-Author, Year-Of-Publication, Publisher), obtained from Amazon Web Services. In case of several authors, only the first is provided. URLs linking to cover images are also given, appearing in three different flavours (Image-URL-S, Image-URL-M, Image-URL-L), i.e., small, medium, large. These URLs point to the Amazon web site. This file contains 271,379 rows and 8 columns:
 
 - ISBN: ISBN ID for each book
 - Book.Title: Title of the book
@@ -38,7 +76,7 @@ The dataset contains three csv files which are ratings, users and books.
 - Image.URL.M: Medium sized image URL of the book
 - Image.URL.L: Large sized image URL of the book
 
-# Importing libraries
+## Importing libraries
 
 ```{r, warning=FALSE,message=FALSE,error=FALSE, results='hide'}
 library(funModeling) 
@@ -58,10 +96,13 @@ library(caret)
 library(knitr)
 library(Amelia)
 library(rpart)
+library(ggcorrplot)
+library(factoextra)
+library(class)
 ```
 
 
-# Loading dataset
+## Loading dataset
 
 We will load 3 data files first. 
 
@@ -81,7 +122,7 @@ head(books, n=5)
 ```
 
 
-# Exploratory data analysis
+# 2) Exploratory data analysis
 
 Let's check the unique number of books & users. 
 
@@ -89,8 +130,6 @@ Let's check the unique number of books & users.
 n_distinct(ratings$`User-ID`)
 n_distinct(books$ISBN)
 ```
-
-We have 91407 unique UserID but originally there are 278858 users. That means not all users have ratings. 
 
 
 ### Merging dataframes
@@ -118,7 +157,7 @@ head(dataset, n=5)
 
 ### Changing column names
 
-We have 13 columns and we can change names of the some of them.
+We have 13 columns and we will change name of the some of them.
 
 ```{r}
 colnames(dataset)
@@ -148,14 +187,6 @@ Check for any duplications
 sum(duplicated(dataset))
 ```
 
-Check for NA values
-
-```{r}
-sum(is.na(dataset))
-sum(is.na(dataset$Age))
-```
-We have missing values and all of them are in the Age column.
-
 Also, we will turn ID columns into factors to make easier usage in the future.
 
 ```{r}
@@ -171,7 +202,7 @@ rating.count.users <- dataset %>% count(User.ID)
 head(rating.count.users, n=5)
 ```
 
-From the table below, we can see that the maximum number of rating by a user is 2899 and the mean is about 5.
+From the table below, we can see that the maximum number of rating by a user is 2899 and the mean is about 5.196.
 
 ```{r}
 summary(rating.count.users)
@@ -190,10 +221,12 @@ dataset %>%
 There are a lot of zero values. It might indicate the absence of rating. So we will remove those rows.
 
 ```{r}
-dataset = dataset[dataset$Book.Rating!= 0, ]
+dataset <- dataset[dataset$Book.Rating!= 0, ]
 ```
 
-So the rating change as seen below.
+# 3) Visualization techniques
+
+So the rating change as seen below. 8 is the most used voting value.
 
 ```{r}
 dataset %>%
@@ -203,44 +236,48 @@ dataset %>%
   theme_minimal() + scale_x_continuous(breaks = 0:10)
 ```
 
-Now we will get total rating count for each book.
+We do not have a categorical variable but we will create one based on average votes for each book and classify them as yes if its average rating is greater than the overall mean.
+
+
+Now we will get average rating for each book.
 
 ```{r}
-rating.count.books <- dataset %>% count(ISBN)
-head(rating.count.books, n=5)
+books.rating.mean <- aggregate(Book.Rating ~ ISBN, dataset, mean)
+head(books.rating.mean, n=5)
 ```
 
-A book has a maximum 259 number of votes. The mean value is 1.861.
+The highest rate a book has is 10. The mean value is 7.529.
 
 ```{r}
-summary(rating.count.books)
+summary(books.rating.mean)
 ```
 
-Now we will get the books which has more votes than the mean and classify them as above the mean or not.
+Now we will get the books which has more average rating than the mean and classify them as above the mean or not.
 
 ```{r}
-nrow(rating.count.books)
-sum(rating.count.books$n > 1.861)
+nrow(books.rating.mean)
+sum(books.rating.mean$Book.Rating > 7.529)
 ```
 
-Order in descending order 
+Let order it in descending order.
 
 ```{r}
-head(rating.count.books[order(-n)], n=5)
-```
-
-Get the books which has higher rating more than the mean and classify by yes or no
-
-```{r}
-rating.count.books <- rating.count.books[rating.count.books$n > 2.562]
+book.rating.mean <-  books.rating.mean[order(-books.rating.mean$Book.Rating),]
 ```
 
 
+Get the books which has higher rating more than the mean and classify by yes or no.
+
 ```{r}
-dataset$Rating.Count.Above.Mean <- ifelse(dataset$ISBN %in% rating.count.books$ISBN, "Yes", "No")
+books.rating.mean <- books.rating.mean[books.rating.mean$Book.Rating > 7.692,]
 ```
 
-31449 books has count more than mean and 37450 are below the mean.
+
+```{r}
+dataset$Rating.Count.Above.Mean <- ifelse(dataset$ISBN %in% books.rating.mean$ISBN, "Yes", "No")
+```
+
+36151 books has count more than mean and 32748 are below the mean.
 
 ```{r}
 nrow(dataset[dataset$Rating.Count.Above.Mean == "Yes",])
@@ -265,8 +302,9 @@ ggplot(aes(Country, n)) +
   geom_col(fill="brown")
 ```
 
+The users are mostly from the USA. The second country is Germany and Canada is the third one.
 
-### Top 10 highest rated books which has more than 100 votes
+## Top 10 highest rated books which has more than 100 votes
 
 
 ```{r}
@@ -281,6 +319,9 @@ ratings.mean %>%
 ggplot(aes(Book.Rating, Book.Title)) +
   geom_col(fill='pink')
 ```
+
+Harry Potter and the Order of the Phoenix (Book 5) is the one that has the highest rating in books which has more votes than 100. And Harry Potter and the Sorcerer's Stone (Harry Potter (Paperback)) is the second one with an 8.92 rates.
+
 
 ## Exploration of year of publication
 
@@ -298,7 +339,7 @@ dataset$Year.Of.Publication[dataset$Year.Of.Publication == 0] <- NA
 ```{r}
 summary(dataset$Year.Of.Publication)
 ```
-
+The graph shows the year of publication data of books. 
 
 ```{r}
 year_hist <- dataset %>%
@@ -318,8 +359,9 @@ Check how many unique author values we have
 length(dataset$Book.Author)
 n_distinct(dataset$Book.Author)
 ```
+There are 21,926 unique authors.
 
-## Top 10 rated authors
+### Top 10 rated authors
 
 Get the authors which has been voted more than 100 times. Calculate rating means for each one and rate them in descending order. 
 
@@ -336,12 +378,17 @@ ggplot(aes(Book.Rating, Book.Author)) +
   geom_col(fill='blue')
 ```
 
-## Check out for class imbalances
+J. K. Rowling has the highest rate with 8.93. Neil Gaiman and J. R. R. Tolkien are the second and the third ones.
 
+# Z.a) Imbalanced data set
+
+We will look at how much data we have by class.
 
 ```{r}
 table(dataset$Rating.Count.Above.Mean)
 ```
+
+It seems that the Yes class has more data.
 
 ```{r}
 prop.table(table(dataset$Rating.Count.Above.Mean))
@@ -354,53 +401,155 @@ ggplot(dataset, aes(x=reorder(Rating.Count.Above.Mean, Rating.Count.Above.Mean, 
 geom_bar(fill='red') +  labs(x='Rating Count Above Mean')
 ```
 
+We will store the old dataset as imbalanced dataset.
 
 ```{r}
-n_legit <- 239195
-new_frac_legit <- 0.75
+imbalanced.dataset <- dataset
+missing.dataset <- dataset
+```
+
+Now we can apply oversampling to make them equal size.
+
+```{r}
+n_legit <- 36151
+new_frac_legit <- 0.68
 new_n_total <- n_legit/new_frac_legit
 ```
 
 ```{r}
 oversampling_result <- ovun.sample(Rating.Count.Above.Mean ~ ., data = dataset, method = "over", 
                                    N = new_n_total, seed = 2018)
-oversampled <- oversampling_result$data
-table(oversampled$Rating.Count.Above.Mean)
+dataset <- oversampling_result$data
+row.names(dataset) <- NULL
+table(dataset$Rating.Count.Above.Mean)
 ```
 
+Now our classes have almost the same number of data.
+
 ```{r}
-ggplot(oversampled, aes(x=reorder(Rating.Count.Above.Mean, Rating.Count.Above.Mean, function(x)-length(x)))) +
+prop.table(table(dataset$Rating.Count.Above.Mean))
+```
+
+
+```{r}
+ggplot(dataset, aes(x=reorder(Rating.Count.Above.Mean, Rating.Count.Above.Mean, function(x)-length(x)))) +
 geom_bar(fill='red') +  labs(x='Oversampled Rating Count Above Mean')
 ```
 
+# Y.a) Missing data imputation 
+
+Check for NA values
+
+```{r}
+sum(is.na(dataset))
+sum(is.na(imbalanced.dataset))
+names(which(colSums(is.na(dataset)) > 0))
+names(which(colSums(is.na(imbalanced.dataset)) > 0))
+```
+
+We have missing values and which are in the Age and Year of Publication columns. We will use mean imputation (or mean substitution) that replaces missing values of a certain variable by the mean of non-missing cases of that variable.
+
+
+```{r}
+dataset$Age <- impute(dataset$Age, mean)
+dataset$Year.Of.Publication <- impute(dataset$Year.Of.Publication, mean)
+
+imbalanced.dataset$Age <- impute(imbalanced.dataset$Age, mean)
+imbalanced.dataset$Year.Of.Publication <- impute(imbalanced.dataset$Year.Of.Publication, mean)
+```
+
+
+Now, let's check again for NA values 
+
+
+```{r}
+sum(is.na(dataset))
+sum(is.na(imbalanced.dataset))
+```
+
+We have fixed missing data.
+
 ## Subset data
+
+The dataset contains 53,163 values after data preprocessing. Because we had some performance issues with our machines while fitting models, we had to take a subset of the dataset with 500 rows.
 
 ```{r}
 set.seed(12345)
 dataset <- dataset[sample(1:nrow(dataset),500),]
+imbalanced.dataset <- imbalanced.dataset[sample(1:nrow(dataset),500),]
+missing.dataset <- missing.dataset[sample(1:nrow(dataset),500),]
+row.names(dataset) <- NULL
+row.names(imbalanced.dataset) <- NULL
+row.names(missing.dataset) <- NULL
 nrow(dataset)
 ```
 
+# 4) Multicollinearity
 
-# Logistic Regression
+We replaced Rating.Count.Above.Mean values Yes with 2 and No with 1.
 
 ```{r}
-sapply(dataset, class)
+dataset$Rating.Count.Above.Mean <- ifelse(dataset$Rating.Count.Above.Mean == "No", 1, 2)
 ```
 
-We have a factor variable which is Rating.Count.Above.Mean (our dependent variable) but R assumes it is a character. We modified it to factor.
+We selected certain columns of the data to calculate the correlation.
 
 ```{r}
-dataset$Rating.Count.Above.Mean <- as.factor(dataset$Rating.Count.Above.Mean)
+data <-dataset[, c('Book.Rating',"Age","Year.Of.Publication","Rating.Count.Above.Mean")]
+```
+
+
+```{r}
+sapply(data, class)
+```
+
+We deleted NA values.
+
+```{r}
+data <- data[!is.na(data$Age),]
+data <- data[!is.na(data$Year.Of.Publication),]
+data <- data[!is.na(data$Book.Rating),]
+data <- data[!is.na(data$Rating.Count.Above.Mean),]
+```
+
+We drew a correlation map to see the correlation between our columns.
+
+```{r}
+correlations <- cor(data)
+corrplot::corrplot(correlations,method = "square",tl.cex = 0.6, tl.col = "black")
+```
+
+Multicollinearity occurs when features are highly correlated with one or more of the other features in the dataset.
+
+As you see above some of the features in the dataset are highly correlated with each other. So, there exists multicollinearity. We can effectively eliminate multicollinearity between features using PCA.
+
+### We will apply PCA (5) after Logistic Regression and we will also apply PCA to Logistic Regression.
+
+# 6) Logistic Regression
+
+Logistic Regression is a classification model which is used to understand the relationship between the dependent variable and one or more independent variables by estimating probabilities using a logistic regression equation. 
+
+- The dependent variable should be binary like yes or no. 
+
+- It can help you predict the likelihood of an event happening or a choice being made.
+
+Linear Regression outputs continuous value, and it has a straight line to map the input variables to the dependent variables. The output can be any of an infinite number of possibilities. On the other hand, Logistic Regression uses a logistic function to map the input variables to categorical dependent variables. In contrast to Linear Regression, Logistic Regression outputs a probability between 0 and 1.
+
+## 6.a) Functions and arguments
+
+We have a factor variable which is Rating.Count.Above.Mean (our dependent variable) but R assumes it is numeric. We modified it to factor.
+
+```{r}
+data$Rating.Count.Above.Mean <- as.factor(data$Rating.Count.Above.Mean)
 ```
 
 We split our data into train and test data.
 
 ```{r}
-sample<- createDataPartition(y= dataset$Rating.Count.Above.Mean,p=0.8,list = FALSE)
+sample<- createDataPartition(y= data$Rating.Count.Above.Mean,p=0.8,list = FALSE)
 
-train_data <- dataset[sample,]
-test_data <- dataset[-sample,]
+train_data <- data[sample,]
+test_data <- data[-sample,]
 ```
 
 We created our model.
@@ -409,35 +558,73 @@ We created our model.
 logistic_model <- glm(Rating.Count.Above.Mean~.,data = train_data,family = "binomial")
 ```
 
+We made predictions.
 
 ```{r}
 prob <- predict(logistic_model,newdata=test_data,type="response")
-pred <- ifelse(prob > 0.5,"Yes","No")
+pred <- ifelse(prob > 0.5, 2, 1)
+```
+
+We generated a confusion matrix.
+
+```{r}
+conf.matrix <- confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
+conf.matrix
+```
+
+## 6.b) Visualization
+
+```{r}
+# Heatmap visualization of confusion matrix
+table <- data.frame(conf.matrix$table)
+plotTable <- table %>%
+  group_by(Prediction) %>%
+  mutate(prop = Freq/sum(Freq))
+ggplot(data =  plotTable, mapping = aes(x = Reference, y = Prediction, alpha = prop)) +
+  geom_tile(aes(fill = Freq), colour = "white") +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1, color="white", size=10) +
+  scale_fill_gradient(low = "blue", high = "navyblue") +
+  theme_bw() + theme(legend.position = "none")
+```
+
+## 6.c) 
+As you see above model accuracy is 83%. The model classified 39 + 44 datapoint correctly. We can also increase this ratio by applying PCA(Principal Component Analysis) to our dataset.
+
+# 5) PCA
+
+## 5.a) Functions and arguments
+
+We converted our columns to numeric to apply PCA.
+
+```{r}
+train_data$Book.Rating <- as.numeric(train_data$Book.Rating)
+train_data$Year.Of.Publication <- as.numeric(train_data$Year.Of.Publication)
+train_data$Rating.Count.Above.Mean <- as.numeric(train_data$Rating.Count.Above.Mean)
+test_data$Book.Rating <- as.numeric(test_data$Book.Rating)
+test_data$Year.Of.Publication <- as.numeric(test_data$Year.Of.Publication)
+test_data$Rating.Count.Above.Mean <- as.numeric(test_data$Rating.Count.Above.Mean)
 ```
 
 
 ```{r}
-confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
+sapply(train_data,class)
+levels(train_data$Rating.Count.Above.Mean)
 ```
 
+### Apply PCA
 
-# PCA
-
-We applied PCA in our dataset.
+We applied Pca in our dataset.
 
 ```{r}
 pca <- prcomp(train_data, center = TRUE, scale = TRUE)
-
-summary(pca)
+pca_test<-prcomp(test_data,center = TRUE, scale=TRUE)
+pca
 ```
 
-Look at the result in a plot.
+## 5.b) Visualization
 
 ```{r}
-screeplot(pca, type = "l", npcs = 15, main = "Screeplot of the first 15 PCs")
-abline(h = 1, col="red", lty=5)
-legend("topright", legend=c("Eigenvalue = 1"),
-       col=c("red"), lty=5, cex=0.6)
+plot(pca, type='l', main="PCA - Principal Components Analysis Chart", col="red")
 ```
 
 
@@ -450,36 +637,95 @@ legend("topleft", legend=c("Cut-off @ PC6"),
        col=c("red"), lty=5, cex=0.6)
 ```
 
+### Get eigenvalues
 
+```{r}
+explained.variance <- pca$sdev^2
+explained.variance
+```
+
+### Plot PCA
+
+```{r}
+pca.var <- get_pca_var(pca)
+
+kmean <- kmeans(pca.var$coord, centers = 3, nstart=25)
+group <- as.factor(kmean$cluster)
+
+fviz_pca_var(pca, col.var=group, palette='jco', legend.title='Cluster')
+```
+
+After applying it to PCA, we drew a correlation map again.
+
+```{r}
+correlations <- cor(pca$x[,c(0:4)])
+
+corrplot::corrplot(correlations,method = "square", tl.col = "black")
+```
+
+## 5.c) Final comments
+
+We cannot see any correlation between components. This is because of PCA has transformed the set of correlated variables in the original dataset into a set of uncorrelated variables.
+
+
+# 6.X) Building a logistic regression model on the transformed data
+
+After applying PCA, we applied logistic regression to our data again to compare the results and see the effect of PCA.
+
+```{r}
+train_data$Rating.Count.Above.Mean <- as.factor(train_data$Rating.Count.Above.Mean)
+```
 
 ```{r}
 set.seed(42)
 
-data_pca <- data.frame(Rating.Count.Above.Mean=train_data[,"Rating.Count.Above.Mean"],pca$x[,0:6])
+data_pca <- data.frame(Rating.Count.Above.Mean=train_data[,"Rating.Count.Above.Mean"],pca$x[,0:4])
 head(data_pca)
 ```
-
-
-# Logistic Regression with PCA
 
 ```{r}
 set.seed(42)
 model_pca <- glm(Rating.Count.Above.Mean ~ .,data= data_pca,family = binomial)
+
 test_data_pca <- predict(pca,newdata = test_data)
 ```
 
 
 ```{r}
-prob <- predict(model_pca , newdata = data.frame(test_data_pca[,1:6]),type = "response")
-pred <- factor(ifelse(prob>0.5,"Yes","No"))
-confusionMatrix(test_data$Rating.Count.Above.Mean,as.factor(pred))
+prob <- predict(model_pca , newdata = data.frame(test_data_pca[,0:4]),type = "response")
+
+pred <- factor(ifelse(prob>0.5,2,1))
+
+levels(as.factor(pred))
+levels(test_data$Rating.Count.Above.Mean)
+
+confusionMatrix(as.factor(test_data$Rating.Count.Above.Mean),as.factor(pred))
 ```
 
+As you see above our accuracy become 100%.The test accuracy has increased by 17%. Both false positives and false negatives have also been reduced. The reason behind the performance increase in this model is is PCA has effectively eliminated the multicollinearity.
 
 
-# Clustering
+# 7) Clustering
 
-## K-Means Clustering
+## 7.a) Why K-means and Hierarchical Clustering
+
+We will cluster users based on their age and book ratings.
+
+We decided to use K-means Clustering and Hierarchical Clustering algorithms. The main reason is that we learned them in the lesson and they are the most popular ones. Besides those reasons there are some other reasons:
+
+**Advantages of K-Means:**
+
+- Guarantees convergence
+- Can warm-start the positions of centroids
+- Easily adapts to new examples
+- Generalizes to clusters of different shapes and sizes, such as elliptical clusters
+
+**Advantages of Hierarchical Clustering:**
+
+- It is a powerful technique that allows building tree structures from data similarities
+- It lets us see how different sub-clusters relate to each other, and how far apart data points are
+
+# 7.1) K-Means Clustering Algorithm Application
 
 K-means clustering aims to partition data into k clusters in a way that data points in the same cluster are similar and data points in the different clusters are farther apart. It’s an unsupervised machine learning algorithm. It computes the centroids and iterates until it finds optimal centroid. It assumes that the number of clusters are already known. 
 
@@ -495,15 +741,16 @@ The k-means clustering works as follows:
 
 - Reassign each data point to the new closest centroid. If any reassignment happens, go back to previous step. 
 
+### 7.1.a) Functions and arguments
 
-We will use age and location to cluster users.
+We will use age and book rating to cluster users.
 
 ```{r}
 X <- dataset[sample,] %>% select("User.ID", "Age", "Book.Rating")
 head(X, n=5)
 ```
 
-## Determining Optimal Number of Clusters
+#### Determining Optimal Number of Clusters
 
 The number of clusters that we choose for a given dataset cannot be random. Each cluster is formed by calculating and comparing the distances of data points within a cluster to its centroid. An ideal way to figure out the right number of clusters would be to calculate the Within-Cluster-Sum-of-Squares (WCSS). 
 
@@ -517,7 +764,7 @@ X <- X[!is.na(X$Age), ]
 ```
 
 
-## Elbow method
+#### Elbow method
 
 We are going to use the Elbow Method to decide the optimal number of clusters.
 
@@ -531,7 +778,7 @@ plot(1:10, wcss, type = "b", main = paste("Clusters of users"), xlab = "Number o
 
 As seen on the plot, the optimal number of clusters seems as 3.
 
-## Apply K-Means
+#### Apply K-Means
 
 We will split our data into 3 clusters. The nstart parameter attempts multiple initial configurations and reports on the best one. 
 
@@ -541,13 +788,19 @@ kmeans.model <- kmeans(X, 3, iter.max = 300, nstart = 10)
 kmeans.model
 ```
 
+### 7.1.b) Visualization
+
 With clusplot function we can draw a 2 dimensional clustering plot with our clusters.
 
 ```{r}
 clusplot(X, clus = kmeans.model$cluster, lines = 0, shade = TRUE, color = TRUE, labels = 2, plotchar = FALSE, span = TRUE, main = paste("Clusters of users"), xlab = "Age", ylab = "Book Rating")
 ```
 
-## Hierarchical clustering
+### 7.1.c) 
+We can see the clusters above. Age and book ratings explain 68.34% of the point variability. There are some far points like 139 and 1 which have very low age and very high book ratings. We assumed that they can be outliers. Users might not enter the correct age and might give very few votes with a high rating value.
+
+
+# 7.2) Hierarchical Clustering Algorithm Application
 
 Hierarchical clustering is **an algorithm that groups similar objects into groups called clusters**. It is an alternative approach to k-means clustering for identifying groups. The endpoint is a set of clusters, where each cluster is distinct from the other cluster, and the objects within each cluster are broadly similar to each other. 
 
@@ -558,7 +811,7 @@ Hierarchical clustering is **an algorithm that groups similar objects into group
 
 Hierarchical clustering can be divided into two main types: **agglomerative** and **divisive**. 
 
-## A) Agglomerative Clustering
+**A) Agglomerative Clustering**
 
 It is a bottom-up approach. In the beginning, each object is initially considered as a single-element cluster. At each step of the algorithm, the two clusters that are the most similar are combined into a new bigger cluster. This procedure is iterated until all points are member of just one single big cluster. 
 
@@ -572,12 +825,13 @@ How it works:
 - Repeat the previous step until there is only one cluster
 
 
-## B) Divisive Clustering
+**B) Divisive Clustering**
 
 It is a top-down approach. It begins with the root, in which all objects are included in a single cluster. At each step of iteration, the most heterogeneous cluster is divided into two. The process is iterated until all objects are in their own cluster.
 
 This process requires at each iteration to search for the best split, implying a **O(2N) time complexity** that has to be tackled with some heuristics. *Divisive hierarchical clustering is good at identifying large clusters.*
 
+### 7.2.a) Functions and arguments
 
 We will use the same data frame that we have been created in the previous model.
 
@@ -585,7 +839,7 @@ We will use the same data frame that we have been created in the previous model.
 head(X, n=5)
 ```
 
-## Dendrogram
+#### Dendrogram
 
 A dendrogram is a tree-like chart that shows the sequences of merges or splits of clusters. We will use it to find the optimal number of clusters.
 
@@ -593,10 +847,11 @@ A dendrogram is a tree-like chart that shows the sequences of merges or splits o
 dendrogram <- hclust(dist(X, method = 'euclidean'), method = 'ward.D')
 plot(dendrogram, main = 'Dendrogram', xlab = 'Users', ylab = 'Euclidean distances')
 ```
+
 The larger gap cut generates 2 clusters so we can say optimal number of clusters is 2.
 
 
-## Apply hierarchical clustering
+#### Apply hierarchical clustering
 
 ```{r}
 hc <- hclust(dist(X, method = 'euclidean'), method = 'ward.D')
@@ -608,10 +863,10 @@ Cutree method cuts a dendrogram tree into several groups by specifying the desir
 y_hc <- cutree(hc, 2)
 y_hc
 ```
+
 We can see the clusters above.
 
-
-## Visualize the clusters
+### 7.2.b) Visualize the clusters
 
 With clusplot function we can draw a 2 dimensional clustering plot with our clusters.
 
@@ -620,10 +875,65 @@ clusplot(X, clus = y_hc, lines = 0, shade = TRUE, color = TRUE, labels = 2, plot
          main = paste("Clusters of clients"), xlab = "Age", ylab = "Book Rating")
 ```
 
+### 7.2.c) 
+With hierarchical clustering, we have almost the same clusters. But we divided the data into 2 clusters here. The blue cluster has the same data as the blue and pink clusters of k-means. There are also extreme points which are 139 and 1.
 
-# Classification
+# Y.b) Missing Data with Hierarchical Clustering
 
-## Decision Tree
+```{r}
+X <- missing.dataset[sample,] %>% select("User.ID", "Age", "Book.Rating")
+head(X, n=5)
+```
+#### Dendrogram
+
+A dendrogram is a tree-like chart that shows the sequences of merges or splits of clusters. We will use it to find the optimal number of clusters.
+
+```{r}
+dendrogram <- hclust(dist(X, method = 'euclidean'), method = 'ward.D')
+plot(dendrogram, main = 'Dendrogram', xlab = 'Users', ylab = 'Euclidean distances')
+```
+
+The larger gap cut generates 2 clusters so we can say optimal number of clusters is 2.
+
+
+#### Apply hierarchical clustering
+
+```{r}
+hc <- hclust(dist(X, method = 'euclidean'), method = 'ward.D')
+```
+
+Cutree method cuts a dendrogram tree into several groups by specifying the desired number of clusters k(s), or cut height(s).
+
+```{r}
+y_hc <- cutree(hc, 2)
+y_hc
+```
+
+We can see the clusters above.
+
+### Visualize the clusters
+
+With clusplot function we can draw a 2 dimensional clustering plot with our clusters.
+
+```{r}
+clusplot(X, clus = y_hc, lines = 0, shade = TRUE, color = TRUE, labels = 2, plotchar = FALSE, span = TRUE, 
+         main = paste("Clusters of clients"), xlab = "Age", ylab = "Book Rating")
+```
+
+We tried to cluster data with missing values but algorithm displaced them by the median of the corresponding variable(s).
+
+## 7.b) 
+Those two clustering algorithms have almost the same results. Except that we divided the data into 2 clusters in hierarchical, which was 3 on kmeans. They both explain the variability on the same percentage.
+
+# 8) Classification
+
+## 8.a) Why Decision Tree and KNN
+
+We will classify books as their average rating will be grater than the mean of overall ratings or not. We will classify them based on Book.Rating and Year.Of.Publication.
+
+The reason we use Decision Tree is that the decision trees' outputs are easy to read and interpret without requiring and less data cleaning is required. Also, we needed high accuracy in the classification we will apply, so we decided that KNN is one of the best choices.
+
+# 8.1) Decision Tree Algorithm Application
 
 Decision Tree is a supervised learning technique that can be used for both classification and regression problems, but mostly it is preferred for solving classification problems. 
 - It is a tree-structured classifier
@@ -631,28 +941,170 @@ Decision Tree is a supervised learning technique that can be used for both class
 - Branches represent the decision rules
 - Each leaf node represents the outcome
 
+### 8.1.a) Functions and arguments
+
 ```{r}
-Z <- dataset[sample,] %>% select("Book.Rating", "Age", "Rating.Count.Above.Mean")
+Z <- dataset[sample,] %>% select("Book.Rating", "Year.Of.Publication", "Rating.Count.Above.Mean")
 head(Z, n=5)
 ```
-
-
-```{r}
-Z <- Z %>% mutate(Rating.Count.Factor = ifelse(Rating.Count.Above.Mean == "No", 0, 1))
-```
-
 
 Turn the target feature to factor
 
 ```{r}
-Z$Rating.Count.Factor = factor(Z$Rating.Count.Factor, levels = c(0, 1))
+Z$Rating.Count.Factor <- factor(Z$Rating.Count.Above.Mean, levels = c(1, 2))
 ```
 
 
 ```{r}
-Z <- Z[!is.na(Z$Age), ]
+Z <- Z[!is.na(Z$Year.Of.Publication), ]
 Z <- select(Z,-c(Rating.Count.Above.Mean))
 head(Z, n=5)
+```
+
+
+#### Split data into Train and Test set
+
+Rating.Count.Factor column is our dependent variable.
+
+```{r}
+set.seed(123)
+splitted <- sample.split(Z$Rating.Count.Factor, SplitRatio = 0.75)
+train_Set <- subset(Z, splitted == TRUE)
+test_Set <- subset(Z, splitted == FALSE)
+```
+
+#### Feature Scaling
+
+Feature scaling is a method used to normalize the range of independent variables or features of data.
+
+We will scale all the features except our dependent variable, Rating.Count.Factor.
+
+
+```{r}
+train_y = train_Set[,3]
+test_y = test_Set[,3]
+
+row.names(train_Set) <- NULL
+row.names(test_Set) <- NULL
+
+# Scaled test and train set
+trainSet = data.frame(scale(train_Set[,-3]))
+trainSet$Rating.Count.Factor = train_y
+
+testSet = data.frame(scale(test_Set[,-3]))
+testSet$Rating.Count.Factor = test_y
+```
+
+#### Apply Decision Tree
+
+```{r}
+model.decision <- rpart(formula = Rating.Count.Factor ~ ., data = trainSet)
+model.decision
+```
+
+
+#### Prediction
+
+Probability prediction show us predicted probabilities that the book will be classified as above the mean or not.
+
+```{r}
+probability.prediction <- predict(model.decision, newdata = testSet[-3,], type = 'class')
+probability.prediction
+```
+
+#### Confusion Matrix
+
+```{r}
+levels(as.factor(probability.prediction))
+levels(test_Set$Rating.Count.Factor)
+conf.matrix <- confusionMatrix(as.factor(testSet[2:100, 3]),as.factor(probability.prediction))
+decision.accuracy.balanced <- conf.matrix$overall['Accuracy']
+conf.matrix
+```
+
+The accuracy is 85%. We have 5 + 9 incorrect classifications.
+
+
+```{r}
+# Heatmap visualization of confusion matrix
+table <- data.frame(conf.matrix$table)
+plotTable <- table %>%
+  group_by(Prediction) %>%
+  mutate(prop = Freq/sum(Freq))
+ggplot(data =  plotTable, mapping = aes(x = Reference, y = Prediction, alpha = prop)) +
+  geom_tile(aes(fill = Freq), colour = "white") +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1, color="white", size=10) +
+  scale_fill_gradient(low = "blue", high = "navyblue") +
+  theme_bw() + theme(legend.position = "none")
+```
+
+## 8.1.b) Visualization
+
+### Visualize Train Set Results
+
+```{r}
+set <- trainSet
+X1 <- seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 <- seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set <- expand.grid(X1, X2)
+colnames(grid_set) <- c('Book.Rating', 'Year.Of.Publication')
+y_grid <- predict(model.decision, newdata = grid_set, type = 'class')
+plot(set[, -3], main = 'Decision Tree (Train Set)',
+     xlab = 'Book.Rating', ylab = 'Year.Of.Publication',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
+```
+
+
+### Visualize Test Set Results
+
+```{r}
+set <- testSet
+X1 <- seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 <- seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set <- expand.grid(X1, X2)
+colnames(grid_set) <- c('Book.Rating', 'Year.Of.Publication')
+y_grid <- predict(model.decision, newdata = grid_set, type = 'class')
+plot(set[, -3], main = 'Decision Tree (Test Set)',
+     xlab = 'Book.Rating', ylab = 'Year.Of.Publication',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
+```
+
+
+## 8.1.c) 
+As we see above the books that are classified as above the mean are mostly on the red side of the plot. Most of the books have a higher year of publication. The model classified true most of the data.
+
+
+
+# Z.b) Decision tree with imbalanced data
+
+```{r}
+imbalanced.dataset$Rating.Count.Above.Mean <- ifelse(imbalanced.dataset$Rating.Count.Above.Mean == "No", 1, 2)
+```
+
+
+```{r}
+K <- imbalanced.dataset[sample,] %>% select("Book.Rating", "Year.Of.Publication", "Rating.Count.Above.Mean")
+row.names(K) <- NULL
+head(K, n=5)
+```
+
+Turn the target feature to factor
+
+```{r}
+K$Rating.Count.Factor <- factor(K$Rating.Count.Above.Mean, levels = c(1, 2))
+```
+
+
+```{r}
+K <- K[!is.na(K$Year.Of.Publication), ]
+K <- select(K,-c(Rating.Count.Above.Mean))
+head(K, n=5)
 ```
 
 
@@ -662,12 +1114,12 @@ Rating.Count.Factor column is our dependent variable.
 
 ```{r}
 set.seed(123)
-splitted = sample.split(Z$Rating.Count.Factor, SplitRatio = 0.75)
-train_Set = subset(Z, splitted == TRUE)
-test_Set = subset(Z, splitted == FALSE)
+splitted <- sample.split(K$Rating.Count.Factor, SplitRatio = 0.75)
+train_Set <- subset(K, splitted == TRUE)
+test_Set <- subset(K, splitted == FALSE)
 ```
 
-## Feature Scaling
+### Feature Scaling
 
 Feature scaling is a method used to normalize the range of independent variables or features of data.
 
@@ -675,64 +1127,76 @@ We will scale all the features except our dependent variable, Rating.Count.Facto
 
 
 ```{r}
-trainSet = train_Set
-testSet = test_Set
+train_y = train_Set[,3]
+test_y = test_Set[,3]
+
+row.names(train_Set) <- NULL
+row.names(test_Set) <- NULL
+
+# Scaled test and train set
+trainSet = data.frame(scale(train_Set[,-3]))
+trainSet[,3] = train_y
+
+testSet = data.frame(scale(test_Set[,-3]))
+testSet[,3] = test_y
 ```
 
 
-## Apply Decision Tree
+
+### Apply Decision Tree
 
 ```{r}
-model = rpart(formula = Rating.Count.Factor ~ ., data = train_Set)
-model
+model.decision <- rpart(formula = Rating.Count.Factor ~ ., data = trainSet)
+model.decision
 ```
 
 
-## Prediction
+### Prediction
 
-Probability prediction show us predicted probabilities that the user will buy the product.
+Probability prediction show us predicted classes of a book if its average rating is above the mean or not.
 
 ```{r}
-probability.prediction = predict(model, newdata = test_Set[-3, 1:72], type = 'class')
+probability.prediction <- predict(model.decision, newdata = testSet[-3,], type = 'class')
 probability.prediction
 ```
 
-
-## Confusion Matrix
+### Confusion Matrix
 
 ```{r}
-# Generate confusion matrix
-conf.matrix <- confusionMatrix(table(test_Set[3], probability.prediction))
+levels(as.factor(probability.prediction))
+levels(test_Set$Rating.Count.Factor)
+conf.matrix <- confusionMatrix(as.factor(testSet[2:100, 3]),as.factor(probability.prediction))
+decision.accuracy.imbalanced <- conf.matrix$overall['Accuracy']
 conf.matrix
 ```
 
-The accurary is 83%. We have 11 + 6 incorrect classifications.
+The accurary is 52%. We have 16 + 31 incorrect classifications.
 
 
 ```{r}
 # Heatmap visualization of confusion matrix
 table <- data.frame(conf.matrix$table)
 plotTable <- table %>%
-  group_by(probability.prediction) %>%
+  group_by(Prediction) %>%
   mutate(prop = Freq/sum(Freq))
-ggplot(data =  plotTable, mapping = aes(x = Var1, y = probability.prediction, alpha = prop)) +
+ggplot(data =  plotTable, mapping = aes(x = Reference, y = Prediction, alpha = prop)) +
   geom_tile(aes(fill = Freq), colour = "white") +
   geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1, color="white", size=10) +
   scale_fill_gradient(low = "blue", high = "navyblue") +
   theme_bw() + theme(legend.position = "none")
 ```
 
-## Visualize Train Set Results
+### Visualize Train Set Results
 
 ```{r}
-set = trainSet
-X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
-X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
-grid_set = expand.grid(X1, X2)
-colnames(grid_set) = c('Age', 'EstimatedSalary')
-y_grid = predict(model, newdata = grid_set, type = 'class')
-plot(set[, -3], main = 'Decision Tree (Train Set)',
-     xlab = 'Age', ylab = 'Estimated Salary',
+set <- trainSet
+X1 <- seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 <- seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set <- expand.grid(X1, X2)
+colnames(grid_set) <- c('Book.Rating', 'Year.Of.Publication')
+y_grid <- predict(model.decision, newdata = grid_set, type = 'class')
+plot(set[, -3], main = 'Decision Tree with Imbalanced Data (Train Set)',
+     xlab = 'Book.Rating', ylab = 'Year.Of.Publication',
      xlim = range(X1), ylim = range(X2))
 contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
 points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
@@ -740,96 +1204,171 @@ points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
 ```
 
 
-## Visualize Test Set Results
+### Visualize Test Set Results
+
+```{r}
+set <- testSet
+X1 <- seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 <- seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set <- expand.grid(X1, X2)
+colnames(grid_set) <- c('Book.Rating', 'Year.Of.Publication')
+y_grid <- predict(model.decision, newdata = grid_set, type = 'class')
+plot(set[, -3], main = 'Decision Tree with Imbalanced Data(Test Set)',
+     xlab = 'Book.Rating', ylab = 'Year.Of.Publication',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
+```
+
+### Compare balanced data accuracy vs. imbalanced data accuracy
+
+```{r}
+print("Accuracy of decision tree with balanced data")
+decision.accuracy.balanced
+
+print("Accuracy of decision tree with imbalanced data")
+decision.accuracy.imbalanced
+```
+
+As seen above balanced data has higher accuracy than the imbalanced data. 
+
+
+# 8.2) K-Nearest Neighbors (K-NN) Algorithm Application
+
+### 8.2.a) Functions and Arguments
+
+```{r}
+K <- dataset[sample,] %>% select("Book.Rating", "Year.Of.Publication", "Rating.Count.Above.Mean")
+head(K, n=5)
+```
+
+Turn the target feature to factor
+
+```{r}
+K$Rating.Count.Factor <- factor(K$Rating.Count.Above.Mean, levels = c(1, 2))
+```
+
+
+```{r}
+K <- K[!is.na(K$Year.Of.Publication), ]
+K <- select(K,-c(Rating.Count.Above.Mean))
+head(K, n=5)
+```
+
+
+#### Split data into Train and Test set
+
+Rating.Count.Factor column is our dependent variable.
+
+```{r}
+set.seed(123)
+splitted <- sample.split(K$Rating.Count.Factor, SplitRatio = 0.75)
+train_Set <- subset(K, splitted == TRUE)
+test_Set <- subset(K, splitted == FALSE)
+```
+
+### Feature Scaling
+
+Feature scaling is a method used to normalize the range of independent variables or features of data.
+
+We will scale all the features except our dependent variable, Rating.Count.Factor.
+
+
+```{r}
+train_y <- train_Set[,3]
+test_y <- test_Set[,3]
+
+# Scaled test and train set
+trainSet <- data.frame(scale(train_Set[,-3]))
+trainSet[,3] <- train_y
+
+testSet <- data.frame(scale(test_Set[,-3]))
+testSet[,3] <- test_y
+```
+
+
+#### Apply KNN
+
+
+```{r}
+y_pred <- knn(train = trainSet[, -3], test = testSet[, -3], cl = trainSet[, 3], k = 5, prob = TRUE)
+y_pred
+```
+
+#### Confusion Matrix
+
+```{r}
+conf.matrix <- confusionMatrix(as.factor(testSet[, 3]),as.factor(y_pred))
+knn.accuracy<- conf.matrix$overall['Accuracy']
+conf.matrix
+```
+
+The accurary is 83%. We have 11 + 6 incorrect classifications.
+
+### 8.2.b) Visualization
+
+```{r}
+# Heatmap visualization of confusion matrix
+table <- data.frame(conf.matrix$table)
+plotTable <- table %>%
+  group_by(Prediction) %>%
+  mutate(prop = Freq/sum(Freq))
+ggplot(data =  plotTable, mapping = aes(x = Reference, y = Prediction, alpha = prop)) +
+  geom_tile(aes(fill = Freq), colour = "white") +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1, color="white", size=10) +
+  scale_fill_gradient(low = "blue", high = "navyblue") +
+  theme_bw() + theme(legend.position = "none")
+```
+
+### Visualize Results of Scaled Data
+
+#### Train Set Results
+
+```{r}
+set <- trainSet
+X1 <- seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 <- seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set <- expand.grid(X1, X2)
+colnames(grid_set) <- c('Book.Rating', 'Year.Of.Publication')
+y_grid <- knn(train = trainSet[, -3], test = grid_set, cl = trainSet[, 3], k = 5)
+plot(set[, -3], main = 'K-NN (Scaled Train Set)',
+     xlab = 'Book.Rating', ylab = 'Year.Of.Publication',
+     xlim = range(X1), ylim = range(X2))
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
+```
+
+#### Test Set Results
 
 ```{r}
 set = testSet
 X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
 X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
 grid_set = expand.grid(X1, X2)
-colnames(grid_set) = c('Age', 'EstimatedSalary')
-y_grid = predict(model, newdata = grid_set, type = 'class')
-plot(set[, -3], main = 'Decision Tree (Test Set)',
-     xlab = 'Age', ylab = 'Estimated Salary',
+colnames(grid_set) = c('Book.Rating', 'Year.Of.Publication')
+y_grid = knn(train = trainSet[, -3], test = grid_set, cl = trainSet[, 3], k = 5)
+plot(set[, -3],
+     main = 'K-NN (Scaled Test set)',
+     xlab = 'Book.Rating', ylab = 'Year.Of.Publication',
      xlim = range(X1), ylim = range(X2))
 contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE)
-points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'deepskyblue', 'tomato'))
-points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'blue3', 'red3'))
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'springgreen3', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3'))
 ```
 
-## Plot Decision Tree
+### 8.2.c) KNN is also good at classifying classes.
 
-We will apply the decision tree to data that was not applied feature scaling.
+## b) Compare decision tree model accuracy vs. knn model accuracy
 
 ```{r}
-model = rpart(formula = Purchased ~ ., data = train_Set)
-plot(model)
-text(model)
+print("Accuracy of decision tree")
+decision.accuracy.balanced
+
+print("Accuracy of knn")
+knn.accuracy
 ```
 
-
-
-
-
-
-
-
-----------------------------------------------------------------------
-
-## Missing data imputation
-
-
-```{r}
-sum(is.na(dataset$Age))
-```
-
-We have 277845 NA values in Age column but MICE assumes missing at random values we will also introduce missing values with 'prodNA' artificially. Entries in the given dataframe are deleted completely at random up to the specified amount.
-
-We will use Hmisc package for data imputation and the impute() function which simply imputes missing value using user defined statistical method (mean, max, mean). Its default is median. Let's introduce 1% of missing values to the dataset
-
-
-```{r}
-dataset.missing <- prodNA(dataset, noNA = 0.1)
-summary(dataset.missing)
-```
-
-We will use mice function to impute missing values.
-- m value refers to 5 imputed data sets
-- maxit refers to no. of iterations taken to impute missing values
-- method refers to method used in imputation. We used predictive mean matching which is for numeric variables because we the Age column has the most missing values.
-
-```{r}
-imputed.data <- mice(dataset.missing, m=5, maxit = 10, method = 'pmm', seed = 500)
-summary(imputed.data)
-```
-
-As seen above there are 5 imputed datasets and we can select any of them using complete() function or we can combine the results from these models.
-
-```{r}
-imputed.data$imp$Age
-```
-
-```{r}
-completeData <- complete(imputed.data,2)
-```
-
-
-
-We will build predictive model with with() function
-
-```{r}
-fit <- with(data = imputed.data, exp = lm(Book.Rating ~ Age + Year.Of.Publication)) 
-fit
-```
-
-```{r}
-combine <- pool(fit)
-summary(combine)
-```
-
-
-----------------------------------------------------------------------
-
-
-
+As seen above Decision tree has higher accuracy than KNN.
 
